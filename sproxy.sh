@@ -30,6 +30,9 @@ V3_URL="https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/latest/download/Z
 VERSION_FILE="/etc/zbproxy/version"
 VERSION_TYPE_FILE="/etc/zbproxy/version_type"
 
+# 默认版本号
+DEFAULT_VERSION="v0.1.0"
+
 # 安装版本记录
 INSTALLED_VERSION=""
 
@@ -84,8 +87,8 @@ get_latest_release_version() {
     
     # 如果还是获取不到，使用默认值
     if [ -z "$version" ]; then
-        echo -e "${YELLOW}无法获取最新版本号，使用默认值 v0.1.1${NC}"
-        version="v0.1.1"
+        echo -e "${YELLOW}无法获取最新版本号，使用默认值 $DEFAULT_VERSION${NC}"
+        version="$DEFAULT_VERSION"
     fi
     
     echo "$version"
@@ -96,7 +99,7 @@ get_current_version() {
     if [ -f "$VERSION_FILE" ]; then
         cat "$VERSION_FILE"
     else
-        echo "v1.0.0"
+        echo "$DEFAULT_VERSION"
     fi
 }
 
@@ -622,7 +625,7 @@ show_status() {
         echo "文件大小: $(du -h /usr/local/bin/zbproxy | cut -f1)"
         
         # 检查是否有更新
-        if [ "$CURRENT_VERSION" != "$LATEST_VERSION" ] && [ "$CURRENT_VERSION" != "v1.0.0" ]; then
+        if [ "$CURRENT_VERSION" != "$LATEST_VERSION" ] && [ "$CURRENT_VERSION" != "$DEFAULT_VERSION" ]; then
             echo -e "${YELLOW}有新版本可用: $LATEST_VERSION${NC}"
         fi
     else
