@@ -15,11 +15,16 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # 版本信息
-SCRIPT_VERSION="1.1.0"
+SCRIPT_VERSION="1.2.0"
 
-# 版本 URL
-V1_URL="https://github.com/Stoeaves/ZBProxy/releases/latest/download/ZBProxy-linux-amd64-v1"
-V3_URL="https://github.com/Stoeaves/ZBProxy/releases/latest/download/ZBProxy-linux-amd64-v3"
+# GitHub 仓库信息
+REPO_OWNER="Stoeaves"
+REPO_NAME="ZBProxy"
+GITHUB_API="https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases"
+
+# 版本 URL（使用最新 Release）
+V1_URL="https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/latest/download/ZBProxy-linux-amd64-v1"
+V3_URL="https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/latest/download/ZBProxy-linux-amd64-v3"
 
 # 安装版本记录
 INSTALLED_VERSION=""
@@ -34,7 +39,7 @@ check_root() {
 
 # 检查依赖
 check_dependencies() {
-    local deps=("wget" "rc-update" "rc-service")
+    local deps=("wget" "rc-update" "rc-service" "curl")
     local missing=()
     
     for dep in "${deps[@]}"; do
@@ -50,28 +55,90 @@ check_dependencies() {
     fi
 }
 
+# 获取最新 Release 版本号
+get_latest_release_version() {
+    local version=""
+    
+    # 尝试使用 curl 获取
+    if command -v curl &>/dev/null; then
+        version=$(curl -s "${GITHUB_API}/latest" | grep -o '"tag_name": "[^"]*' | cut -d'"' -f4)
+    fi
+    
+    # 如果 curl 失败，尝试使用 wget
+    if [ -z "$version" ] && command -v wget &>/dev/null; then
+        version=$(wget -qO- "${GITHUB_API}/latest" | grep -o '"tag_name": "[^"]*' | cut -d'"' -f4)
+    fi
+    
+    # 如果还是获取不到，尝试从 release 列表获取
+    if [ -z "$version" ]; then
+        if command -v curl &>/dev/null; then
+            version=$(curl -s "${GITHUB_API}" | grep -o '"tag_name": "[^"]*' | head -1 | cut -d'"' -f4)
+        elif command -v wget &>/dev/null; then
+            version=$(wget -qO- "${GITHUB_API}" | grep -o '"tag_name": "[^"]*' | head -1 | cut -d'"' -f4)
+        fi
+    fi
+    
+    # 如果还是获取不到，使用默认值
+    if [ -z "$version" ]; then
+        echo -e "${YELLOW}无法获取最新版本号，使用默认值 v1.0.0${NC}"
+        version="v1.0.0"
+    fi
+    
+    echo "$version"
+}
+
 # 获取当前安装版本
 get_current_version() {
     if [ -f "/usr/local/bin/zbproxy" ]; then
         # 尝试获取版本信息
         local version_info
         version_info=$(/usr/local/bin/zbproxy --version 2>/dev/null | head -1)
-        if echo "$version_info" | grep -qi "v3"; then
-            echo "v3"
+        
+        # 检查是否包含版本号
+        if echo "$version_info" | grep -qE 'v[0-9]+\.[0-9]+\.[0-9]+'; then
+            echo "$version_info" | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1
+        elif echo "$version_info" | grep -qi "v3"; then
+            echo "v3 (版本未知)"
         elif echo "$version_info" | grep -qi "v1"; then
-            echo "v1"
+            echo "v1 (版本未知)"
         else
-            # 通过文件大小或其他方式判断
+            # 通过文件大小判断
             local file_size
             file_size=$(stat -c%s "/usr/local/bin/zbproxy" 2>/dev/null || echo "0")
             if [ "$file_size" -gt 10000000 ]; then
-                echo "v3"
+                echo "v3 (版本未知)"
             else
-                echo "v1"
+                echo "v1 (版本未知)"
             fi
         fi
     else
         echo "not_installed"
+    fi
+}
+
+# 获取当前安装的版本类型（v1 或 v3）
+get_current_version_type() {
+    if [ ! -f "/usr/local/bin/zbproxy" ]; then
+        echo "not_installed"
+        return
+    fi
+    
+    local version_info
+    version_info=$(/usr/local/bin/zbproxy --version 2>/dev/null | head -1)
+    
+    if echo "$version_info" | grep -qi "v3"; then
+        echo "v3"
+    elif echo "$version_info" | grep -qi "v1"; then
+        echo "v1"
+    else
+        # 通过文件大小判断
+        local file_size
+        file_size=$(stat -c%s "/usr/local/bin/zbproxy" 2>/dev/null || echo "0")
+        if [ "$file_size" -gt 10000000 ]; then
+            echo "v3"
+        else
+            echo "v1"
+        fi
     fi
 }
 
@@ -81,6 +148,7 @@ download_and_install() {
     local url=$2
     
     echo -e "${BLUE}正在下载 ZBProxy $version...${NC}"
+    echo -e "${BLUE}下载地址: $url${NC}"
     
     # 下载
     if ! wget -O /usr/local/bin/zbproxy "$url"; then
@@ -150,9 +218,16 @@ EOF
 install_zbproxy() {
     echo -e "${BLUE}开始安装 ZBProxy...${NC}"
     
+    # 获取最新版本号
+    LATEST_VERSION=$(get_latest_release_version)
+    echo -e "${GREEN}最新 Release 版本: $LATEST_VERSION${NC}"
+    echo ""
+    
     # 检查是否已安装
     if [ -f "/usr/local/bin/zbproxy" ]; then
         echo -e "${YELLOW}检测到已安装 ZBProxy${NC}"
+        CURRENT_TYPE=$(get_current_version_type)
+        echo -e "当前版本类型: $CURRENT_TYPE"
         read -p "是否覆盖安装? (y/n): " -n 1 -r
         echo
         if [[ ! $REPLY =~ ^[Yy]$ ]]; then
@@ -278,6 +353,7 @@ install_zbproxy() {
         
         echo -e "${GREEN}ZBProxy $current_version 安装完成！${NC}"
         echo -e "安装版本: ${GREEN}$current_version${NC}"
+        echo -e "Release 版本: ${GREEN}$LATEST_VERSION${NC}"
         return 0
     else
         echo -e "${RED}ZBProxy 安装失败！${NC}"
@@ -289,21 +365,26 @@ install_zbproxy() {
 update_zbproxy() {
     echo -e "${BLUE}开始更新 ZBProxy...${NC}"
     
+    # 获取最新版本号
+    LATEST_VERSION=$(get_latest_release_version)
+    echo -e "${GREEN}最新 Release 版本: $LATEST_VERSION${NC}"
+    echo ""
+    
     # 检查是否已安装
     if [ ! -f "/usr/local/bin/zbproxy" ]; then
         echo -e "${RED}未检测到已安装的 ZBProxy，请先安装${NC}"
         return 1
     fi
     
-    CURRENT_VERSION=$(get_current_version)
-    echo -e "当前版本: ${YELLOW}$CURRENT_VERSION${NC}"
+    CURRENT_TYPE=$(get_current_version_type)
+    echo -e "当前版本类型: ${YELLOW}$CURRENT_TYPE${NC}"
     
     # 选择更新版本
     echo ""
     echo -e "${BLUE}请选择要更新到的版本:${NC}"
     echo -e "  ${GREEN}1.${NC} v1 (兼容性更好，适合旧系统)"
     echo -e "  ${GREEN}2.${NC} v3 (功能更新，性能更好)"
-    echo -e "  ${GREEN}3.${NC} 保持当前版本 ($CURRENT_VERSION)"
+    echo -e "  ${GREEN}3.${NC} 保持当前版本 ($CURRENT_TYPE)"
     echo ""
     read -p "请选择 [1-3]: " version_choice
     
@@ -329,7 +410,7 @@ update_zbproxy() {
             ;;
     esac
     
-    if [ "$target_version" = "$CURRENT_VERSION" ]; then
+    if [ "$target_version" = "$CURRENT_TYPE" ]; then
         echo -e "${YELLOW}目标版本与当前版本相同，无需更新${NC}"
         read -p "是否强制重新安装? (y/n): " -n 1 -r
         echo
@@ -349,7 +430,7 @@ update_zbproxy() {
     fi
     
     # 下载新版本
-    echo "正在下载 $target_version..."
+    echo "正在下载 $target_version (Release: $LATEST_VERSION)..."
     if ! wget -O /usr/local/bin/zbproxy "$target_url"; then
         echo -e "${RED}下载失败，正在恢复备份...${NC}"
         [ -f "/usr/local/bin/zbproxy.bak" ] && mv /usr/local/bin/zbproxy.bak /usr/local/bin/zbproxy
@@ -382,7 +463,9 @@ update_zbproxy() {
         return 1
     fi
     
-    echo -e "${GREEN}ZBProxy 更新完成！新版本: $target_version${NC}"
+    echo -e "${GREEN}ZBProxy 更新完成！${NC}"
+    echo -e "当前版本类型: ${GREEN}$target_version${NC}"
+    echo -e "Release 版本: ${GREEN}$LATEST_VERSION${NC}"
     return 0
 }
 
@@ -492,17 +575,22 @@ uninstall_zbproxy() {
 show_status() {
     echo -e "${BLUE}===== ZBProxy 状态 =====${NC}"
     
+    # 获取最新 Release 版本
+    LATEST_VERSION=$(get_latest_release_version)
+    
     if [ -f "/usr/local/bin/zbproxy" ]; then
         echo -e "状态: ${GREEN}已安装${NC}"
-        VERSION=$(get_current_version)
-        echo "版本: $VERSION"
+        VERSION_TYPE=$(get_current_version_type)
+        echo "版本类型: $VERSION_TYPE"
         
-        # 显示更多版本信息
         echo "详细版本信息:"
         /usr/local/bin/zbproxy --version 2>/dev/null | head -3 || echo "无法获取详细版本信息"
     else
         echo -e "状态: ${RED}未安装${NC}"
     fi
+    
+    echo ""
+    echo -e "最新 Release 版本: ${GREEN}$LATEST_VERSION${NC}"
     
     echo ""
     if command -v rc-service &>/dev/null; then
