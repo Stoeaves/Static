@@ -15,7 +15,7 @@ fi
 
 # 下载 ZBProxy
 echo "正在下载 ZBProxy..."
-wget -O /usr/local/bin/zbproxy https://github.com/Stoeaves/ZBProxy/releases/download/final-0.1.0/ZBProxy-linux-amd64-v1
+wget -O /usr/local/bin/zbproxy https://github.com/Stoeaves/ZBProxy/releases/latest/download/ZBProxy-linux-amd64-v1
 
 # 添加执行权限
 echo "正在添加执行权限..."
